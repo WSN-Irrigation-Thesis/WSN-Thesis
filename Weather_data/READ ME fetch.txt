@@ -1,0 +1,47 @@
+=== fetch.py ===
+
+Author: Kim Öberg
+Last changed: 2014-05-13
+
+This script connects to yr.no and downloads the current 5 day forecast and stores
+it in a XML-file named data.xml.
+
+Input:
+Online 5 day weather forecast for Stockholm
+
+Output:
+data.xml
+
+Features:
+* -
+
+
+Dependencies
+------------
+
+* Ubuntu 12.04 Precise Pangolin
+* Python 2.7
+* sudo apt-get install python-dev
+* sudo apt-get install libxslt1-dev 
+* sudo apt-get install libxml2-dev
+* sudo apt-get install pip
+* sudo pip install lxml
+
+Optional:
+* -
+
+The listed dependencies all need to be install before running the scrip
+in order to be able to import etree from the lxml library.
+
+
+Usage
+-----
+
+0) Install the dependencies listed above.
+
+1) cd into the right directory.
+
+2) Run fetch.py with: 'python fetch.py' in the terminal window.
+
+3) Double check that a file named data.xml was created.
+

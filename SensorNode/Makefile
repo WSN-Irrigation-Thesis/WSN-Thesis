@@ -1,0 +1,6 @@
+COMPONENT=SenseNodeAppC
+CFLAGS += -DPRINTFUART_ENABLED
+CFLAGS += -I$(TOSDIR)/lib/printf
+
+include $(MAKERULES)
+

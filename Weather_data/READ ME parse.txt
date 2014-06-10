@@ -1,0 +1,53 @@
+=== parse_save_data.py ===
+
+Author: Kim Öberg
+Last changed: 2014-05-13
+
+This script iterates through an already downloaded XML-file with weather data from yr.no
+It looks for precipitation (rain) entries and adds each rain entry and the corresponding date
+(it's a 5 day forecast) into the already created Django database together with a timestamp
+of when the entry was added to the database.
+
+It then prints the weather forcast for the upcoming 5 days in the terminal.
+It prints only rain and in millimeters per 24 hours.
+
+Input:
+data.xml = the downloaded XML file (downloaded with fetch.py)
+
+Output:
+Terminal printed 5 day weather forcast for rain in millimeters.
+
+Features:
+* -
+
+
+Dependencies
+------------
+
+* Ubuntu 12.04 Precise Pangolin
+* Python 2.7
+* sudo apt-get install python-dev
+
+Optional:
+* -
+
+The listed dependencies all need to be install before running the scrip.
+
+
+Usage
+-----
+
+0) Install the dependencies listed above.
+
+1) Make sure the name of the XML-file in fetch.py matches the file name in this script (data.xml).
+
+2) Edit the absolut path to the Django database in Aptana: $USER$/$APTANA_WORKSPACE$/db.sqlite3
+
+3) cd into the right directory.
+
+4) Run fetch.py with: 'python fetch.py' in the terminal
+
+5) Run the script with: 'python parse_save_data.py' in the terminal
+
+6) Watch the beautiful 5 day rain forecast in your terminal window.
+

@@ -1,0 +1,283 @@
+// $Id: RadioCountToLedsC.nc,v 1.7 2010-06-29 22:07:17 scipio Exp $
+
+/*									tab:4
+ * Copyright (c) 2000-2005 The Regents of the University  of California.  
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * - Redistributions of source code must retain the above copyright
+ *   notice, this list of conditions and the following disclaimer.
+ * - Redistributions in binary form must reproduce the above copyright
+ *   notice, this list of conditions and the following disclaimer in the
+ *   documentation and/or other materials provided with the
+ *   distribution.
+ * - Neither the name of the University of California nor the names of
+ *   its contributors may be used to endorse or promote products derived
+ *   from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+ * THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Copyright (c) 2002-2003 Intel Corporation
+ * All rights reserved.
+ *
+ * This file is distributed under the terms in the attached INTEL-LICENSE     
+ * file. If you do not find these files, copies can be found by writing to
+ * Intel Research Berkeley, 2150 Shattuck Avenue, Suite 1300, Berkeley, CA, 
+ * 94704.  Attention:  Intel License Inquiry.
+ */
+ 
+#include "Timer.h"
+#include "SenseNode.h"
+#include "printf.h"
+#include "Msp430Adc12.h"
+ 
+/**
+ * Every 7 seconds, a timer is fired, and the soil moisture sensor (ADC Channel 0)
+ * on the node is read. The node sends the data to the base station (node with the preprogrammed
+ * ROOT_NODE_ID), which returns a sleep interval based on weather data. The node updates the sleep
+ * interval if it differs from the old value. 
+ *
+ * The DEBUG PRINT sections can be removed when the node isn't connected to a PC.
+ *
+ * Blue LED on/off: Radio on/off.
+ *
+ *
+ * @author Johanna Simonsson
+ * @date   May 13 2014
+ */
+
+#define ROOT_NODE_ID 1
+#define LISTEN_INTERVAL 500
+#define SLEEP_INTERVAL 5000
+
+
+module SenseNodeC @safe() {
+  provides{
+  	interface AdcConfigure<const msp430adc12_channel_config_t*> as VoltageConfigure;
+  }
+  uses {
+    interface Leds;
+    interface Boot;
+    interface Receive;
+    interface AMSend;
+    interface Timer<TMilli> as MilliTimer;
+    interface Alarm<TMilli,uint16_t> as IdleAlarm;
+    interface SplitControl as AMControl;
+    interface Packet;
+    interface Read<uint16_t> as VoltageRead;
+    interface McuSleep as PowerManager;  
+  }
+}
+
+
+implementation {
+  // Declare Global Variables.
+    const msp430adc12_channel_config_t config = {
+      inch: INPUT_CHANNEL_A0,
+      sref: REFERENCE_VREFplus_AVss,
+      ref2_5v: REFVOLT_LEVEL_1_5,
+      adc12ssel: SHT_SOURCE_ACLK,
+      adc12div: SHT_CLOCK_DIV_1,
+      sht: SAMPLE_HOLD_4_CYCLES,
+      sampcon_ssel: SAMPCON_SOURCE_SMCLK,
+      sampcon_id: SAMPCON_CLOCK_DIV_1
+  };
+  
+  	
+  message_t packet;
+  bool locked;
+  bool listen_flag;
+  uint16_t node_id = 0;
+  uint16_t temp_data = 0;
+  uint32_t sleep_interval = SLEEP_INTERVAL;
+  uint16_t listen_interval = LISTEN_INTERVAL;
+  uint16_t sensor_val;
+  uint16_t receive_count = 0;
+  
+  //Start-up sequence.
+  event void Boot.booted() {
+  
+  	/* DEBUG PRINT */
+    printf("Starting Sense Node application.\n");
+    printfflush();
+    
+    //Start Sleep Timer
+    call MilliTimer.startPeriodic(sleep_interval);
+
+  }
+  
+    // Node wakes up from sleep interval.
+  event void MilliTimer.fired() {
+	 receive_count++;
+	 
+	 // Listen for new sleep interval every 6th time.
+	 if(receive_count == 4){
+	 	call IdleAlarm.start(listen_interval);
+	 	listen_flag = TRUE;
+	 	receive_count = 0;
+	 }
+  	 
+  	  /* DEBUG PRINT */
+   	 printf("MilliTimer fired.\n");
+   	 printfflush();
+   	 
+   	 // Read soil moisture sensor.
+	 call VoltageRead.read();
+     
+  }
+  
+   // Read temperature sensor and start radio.
+  event void VoltageRead.readDone( error_t result, uint16_t val ){
+
+  	uint32_t soil_moisture = 0;
+  	
+    if (result == SUCCESS){
+  	  
+  	  	// Convert ADC value to a soil moisture value.
+  	 	if(val < 1502){ 	    
+  	 	 	soil_moisture = (10 * val) -1;
+  	  	  }
+  	  	else if(val < 1774 && val >= 1502){ 
+  		   soil_moisture = (25 * val) - 17.5;
+  	  	  }
+  	  	else if(val < 2485 && val >= 1774) { 
+  		   soil_moisture = (48.08 * val) - 47.5;
+  	 	 }
+  	  	else if(val < 3004 && val >= 2485) { 
+  	   	  soil_moisture = (26.32 * val) - 7.89;
+  	  	}
+  	  	else{ 
+  	      printf("Value out of range.\n");
+  	 	  printfflush();
+  	    }
+  	    
+  	    /* DEBUG PRINT */
+  	  	printf("Soil Moisture: %lu \n", soil_moisture);
+  	  	printfflush();
+  	  	
+  	  	//Save temperature data in global variable.
+  	  	sensor_val = soil_moisture;
+   	
+   		//Start radio.
+   		call AMControl.start(); 
+    } 	
+  }   
+  
+  // Event called when the radio is started.
+  event void AMControl.startDone(error_t err) {
+    if (err == SUCCESS) {
+    
+		 /*DEBUG PRINT*/
+   		printf("Radio on. \n");
+   		printfflush();
+   	
+   		call Leds.led2On(); // Blue LED
+   			
+   		if (locked){return;}
+   		
+    	else {
+      		radio_count_msg_t* rcm = (radio_count_msg_t*)call Packet.getPayload(&packet, sizeof(radio_count_msg_t));
+     		rcm->sensor_data = sensor_val;
+      		rcm->node_id = TOS_NODE_ID;
+
+      		if (rcm == NULL) {return;}
+      
+     		 // Unicast to Root.    
+     		 if (call AMSend.send(ROOT_NODE_ID, &packet, sizeof(radio_count_msg_t)) == SUCCESS) {
+		
+				/* DEBUG PRINT */
+				printf("Packet sent.\n");	
+	   			printfflush();
+		
+				locked = TRUE;
+      		} 
+    	}    	
+    } 
+    
+    else {
+      call AMControl.start();
+    }
+  }
+
+  // Event called when the radio is stopped.
+  event void AMControl.stopDone(error_t err) {
+ 		
+    	 /*DEBUG PRINT*/
+   		printf("Radio off. \n\n");
+   		printfflush();
+   	
+   		call Leds.led2Off(); // Blue LED
+   		call PowerManager.sleep();
+  }
+  
+
+  
+  // Shuts off the node when
+  async event void IdleAlarm.fired() {
+  		/* DEBUG PRINT */
+  		printf("IdleAlarm fired.\n");
+   	 	printfflush();  	
+   	 	 	
+ 		call AMControl.stop();
+ 		listen_flag = FALSE;
+  }
+
+  // Data reveived from Base Station.
+  event message_t* Receive.receive(message_t* bufPtr, 
+				   void* payload, uint8_t len) {
+   
+    if (len != sizeof(radio_count_msg_t)) {return bufPtr;}
+    
+    /* LIGHT LEDS WHEN MESSAGE IS RECEIVED*/
+    else {
+      radio_count_msg_t* rcm = (radio_count_msg_t*)payload;
+      		
+			call Leds.led0Toggle();
+			if(sleep_interval != rcm->sensor_data){
+				sleep_interval = rcm->sensor_data;
+				call MilliTimer.startPeriodic(sleep_interval);
+			}
+			/*DEBUG PRINT*/
+   			printf("Message Received.\n");
+   			printf("SleepInterval: %i\n", sleep_interval);
+   			printf("Node Id %i\n", rcm->node_id);   			
+   			printfflush();
+      }
+      return bufPtr;
+  }
+
+  // Event called when 
+  event void AMSend.sendDone(message_t* bufPtr, error_t error) {
+    if (&packet == bufPtr) {
+      locked = FALSE;
+      if(!listen_flag){
+      	call AMControl.stop();
+      }
+    }
+  }
+  
+    async command const msp430adc12_channel_config_t* VoltageConfigure.getConfiguration()
+  {
+    return &config; // must not be changed
+  }
+
+
+}
+
+
+
+
