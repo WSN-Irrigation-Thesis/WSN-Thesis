@@ -55,7 +55,7 @@ in the terminal.
 5) Insert the Soil moisture sensor into the female connector on the sensor node. Make sure it is the same as the preprogrammed ADC-channel (It is the one closest to the micro-USB connector). Be sure it the contact is secured to avoid an intermittent connection. 
 
 
-) To see the debugging output, run:
+6) To see the debugging output, run:
 
 	java net.tinyos.tools.PrintfClient -comm serial@/dev/ttyUSBX:115200
 

@@ -55,6 +55,8 @@
  *
  * Blue LED on/off: Radio on/off.
  *
+ * OBSERVE: The sensor isn't calibrated. To calibrate the sensor VH400 from Vegetronix, find out the maximum saturated converted value and divide the measured value with it
+ * to get a soil moisture persentage. To find out more about the sensor, google "VH400".  
  *
  * @author Johanna Simonsson
  * @date   May 13 2014
